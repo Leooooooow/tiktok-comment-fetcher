@@ -8,11 +8,15 @@ import re
 import json
 import csv
 import os
+import sys
 from io import StringIO, BytesIO
 from datetime import datetime
 from typing import Dict, Any
 
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
+# 添加项目根目录到 Python 路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+app = Flask(__name__)
 
 # API 配置 - 从环境变量读取（更安全）
 API_KEY = os.environ.get('TIKHUB_API_KEY', "yY08aG9D6Gt45xNfyVW/s2oZ0kAkzYzcqMxwkGb27TJErnoTdfwowAWLEA==")
@@ -258,11 +262,6 @@ def health():
     })
 
 
-# Vercel serverless handler
-def handler(event, context):
-    return app(event, context)
-
-
-# 本地开发
-if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+# Vercel serverless handler - 这是关键！
+# Vercel 会查找名为 app 的 WSGI 应用
+# 不需要额外的 handler 函数

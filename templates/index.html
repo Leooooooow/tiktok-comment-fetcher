@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="TikTok 评论获取器 - 快速获取任意 TikTok 视频的所有评论">
+    <title>TikTok 评论获取器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- 背景装饰 -->
+    <div class="background-decoration">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <div class="logo">
+                <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 22C9 22 8 22 8 21C8 20 9 16 13 16C17 16 18 20 18 21C18 22 17 22 17 22H9Z" fill="currentColor"/>
+                    <path d="M13 8C14.6569 8 16 6.65685 16 5C16 3.34315 14.6569 2 13 2C11.3431 2 10 3.34315 10 5C10 6.65685 11.3431 8 13 8Z" fill="currentColor"/>
+                </svg>
+                <h1>TikTok 评论获取器</h1>
+            </div>
+            <p class="subtitle">轻松获取任意 TikTok 视频的所有评论数据</p>
+        </header>
+
+        <!-- 输入区域 -->
+        <section class="input-section">
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <svg class="input-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 6H14C14 4.89543 13.1046 4 12 4C10.8954 4 10 4.89543 10 6Z" fill="currentColor"/>
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M3 7C3 5.89543 3.89543 5 5 5H7V7H5V19H19V7H17V5H19C20.1046 5 21 5.89543 21 7V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V7Z" fill="currentColor"/>
+                    </svg>
+                    <input
+                        type="text"
+                        id="videoUrl"
+                        class="url-input"
+                        placeholder="粘贴 TikTok 视频链接，例如: https://www.tiktok.com/@username/video/1234567890"
+                        autocomplete="off"
+                    >
+                    <button id="clearBtn" class="clear-btn" title="清除">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+                <button id="fetchBtn" class="fetch-btn">
+                    <span class="btn-text">获取评论</span>
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.5 3L19 8.5M13.5 3L13.5 8C13.5 8.27614 13.7239 8.5 14 8.5H18.5M13.5 3H7C5.89543 3 5 3.89543 5 5V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V8.5M13.5 3H18.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- 示例链接 -->
+            <div class="example-links">
+                <span class="example-label">示例:</span>
+                <button class="example-link" data-url="https://www.tiktok.com/@fishereffect/video/7563463737844174093">
+                    试试这个视频
+                </button>
+            </div>
+        </section>
+
+        <!-- 加载动画 -->
+        <div id="loading" class="loading-container hidden">
+            <div class="spinner">
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+            </div>
+            <p class="loading-text">正在获取评论数据...</p>
+            <p class="loading-subtext">请稍候，这可能需要几秒钟</p>
+        </div>
+
+        <!-- 错误提示 -->
+        <div id="error" class="error-container hidden">
+            <div class="error-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 8V12M12 16H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <p class="error-text" id="errorMessage"></p>
+            <button class="retry-btn" id="retryBtn">重新尝试</button>
+        </div>
+
+        <!-- 结果区域 -->
+        <section id="results" class="results-section hidden">
+            <!-- 统计信息 -->
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 10H8.01M12 10H12.01M16 10H16.01M9 16H5C3.89543 16 3 15.1046 3 14V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V14C21 15.1046 20.1046 16 19 16H14L9 21V16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">总评论数</p>
+                        <p class="stat-value" id="totalComments">0</p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7 8H17M7 12H11M7 16H13M3 5C3 3.89543 3.89543 3 5 3H19C20.1046 3 21 3.89543 21 5V15C21 16.1046 20.1046 17 19 17H13L7 21V17H5C3.89543 17 3 16.1046 3 15V5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <p class="stat-label">视频 ID</p>
+                        <p class="stat-value video-id" id="videoId">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="action-buttons">
+                <button class="action-btn" id="exportJsonBtn">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8 17L12 21M12 21L16 17M12 21V9M20.88 18.09C21.5751 17.4785 22.0781 16.6873 22.3364 15.8053C22.5947 14.9233 22.5983 13.9859 22.3469 13.1021C22.0955 12.2183 21.5989 11.423 20.9154 10.806C20.232 10.189 19.3884 9.77515 18.48 9.61003C18.1512 7.90843 17.2296 6.38006 15.8756 5.29218C14.5215 4.2043 12.8181 3.62184 11.07 3.64003C9.32184 3.65822 7.63123 4.27597 6.29863 5.39202C4.96603 6.50807 4.07439 8.05638 3.78 9.76003C2.77031 9.9537 1.84708 10.4543 1.13933 11.1919C0.431575 11.9295 -0.0339993 12.8655 0.00241236 13.8335C0.0388241 14.8015 0.573056 15.7112 1.33177 16.4018C2.09048 17.0924 3.0442 17.5213 4.05 17.62" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    导出 JSON
+                </button>
+                <button class="action-btn" id="exportCsvBtn">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 18H17V16H7V18ZM7 14H17V12H7V14ZM7 10H17V8H7V10ZM5 21C4.45 21 3.97917 20.8042 3.5875 20.4125C3.19583 20.0208 3 19.55 3 19V5C3 4.45 3.19583 3.97917 3.5875 3.5875C3.97917 3.19583 4.45 3 5 3H15L21 9V19C21 19.55 20.8042 20.0208 20.4125 20.4125C20.0208 20.8042 19.55 21 19 21H5ZM14 10V5H5V19H19V10H14Z" fill="currentColor"/>
+                    </svg>
+                    导出 CSV
+                </button>
+                <button class="action-btn secondary" id="copyJsonBtn">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8 5H6C5.46957 5 4.96086 5.21071 4.58579 5.58579C4.21071 5.96086 4 6.46957 4 7V19C4 19.5304 4.21071 20.0391 4.58579 20.4142C4.96086 20.7893 5.46957 21 6 21H16C16.5304 21 17.0391 20.7893 17.4142 20.4142C17.7893 20.0391 18 19.5304 18 19V18M8 5C8 5.53043 8.21071 6.03914 8.58579 6.41421C8.96086 6.78929 9.46957 7 10 7H14C14.5304 7 15.0391 6.78929 15.4142 6.41421C15.7893 6.03914 16 5.53043 16 5M8 5C8 4.46957 8.21071 3.96086 8.58579 3.58579C8.96086 3.21071 9.46957 3 10 3H14C14.5304 3 15.0391 3.21071 15.4142 3.58579C15.7893 3.96086 16 4.46957 16 5M16 5V7C16 7.53043 16.2107 8.03914 16.5858 8.41421C16.9609 8.78929 17.4696 9 18 9H20C20.5304 9 21.0391 8.78929 21.4142 8.41421C21.7893 8.03914 22 7.53043 22 7V6C22 5.46957 21.7893 4.96086 21.4142 4.58579C21.0391 4.21071 20.5304 4 20 4H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    复制 JSON
+                </button>
+            </div>
+
+            <!-- 评论列表 -->
+            <div class="comments-header">
+                <h2>评论列表</h2>
+                <div class="filter-controls">
+                    <input type="text" id="searchInput" class="search-input" placeholder="搜索评论...">
+                    <select id="sortSelect" class="sort-select">
+                        <option value="default">默认排序</option>
+                        <option value="likes">按点赞数</option>
+                        <option value="time">按时间</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="commentsList" class="comments-list">
+                <!-- 评论卡片将通过 JavaScript 动态添加 -->
+            </div>
+        </section>
+    </div>
+
+    <!-- Toast 通知 -->
+    <div id="toast" class="toast hidden">
+        <div class="toast-content">
+            <svg class="toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M5 13L9 17L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span id="toastMessage"></span>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

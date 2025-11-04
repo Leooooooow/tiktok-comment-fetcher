@@ -13,10 +13,18 @@ from io import StringIO, BytesIO
 from datetime import datetime
 from typing import Dict, Any
 
-# 添加项目根目录到 Python 路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 获取项目根目录
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, base_dir)
 
-app = Flask(__name__)
+# 设置模板和静态文件路径
+template_dir = os.path.join(base_dir, 'templates')
+static_dir = os.path.join(base_dir, 'static')
+
+app = Flask(__name__,
+            template_folder=template_dir,
+            static_folder=static_dir,
+            static_url_path='/static')
 
 # API 配置 - 从环境变量读取（更安全）
 API_KEY = os.environ.get('TIKHUB_API_KEY', "yY08aG9D6Gt45xNfyVW/s2oZ0kAkzYzcqMxwkGb27TJErnoTdfwowAWLEA==")
@@ -145,7 +153,20 @@ def format_comment(comment: Dict) -> Dict:
 @app.route('/')
 def index():
     """主页"""
-    return render_template('index.html')
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        # 调试信息
+        import traceback
+        error_details = {
+            "error": str(e),
+            "template_folder": app.template_folder,
+            "static_folder": app.static_folder,
+            "base_dir": base_dir,
+            "template_exists": os.path.exists(os.path.join(template_dir, 'index.html')),
+            "traceback": traceback.format_exc()
+        }
+        return jsonify(error_details), 500
 
 
 @app.route('/api/fetch-comments', methods=['POST'])

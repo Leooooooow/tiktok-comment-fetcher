@@ -283,6 +283,17 @@ def health():
     })
 
 
+@app.route('/favicon.ico')
+def favicon():
+    """返回 favicon（避免 404 错误）"""
+    # 返回一个简单的 SVG favicon
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <rect width="100" height="100" fill="#6366f1"/>
+        <text x="50" y="70" font-size="60" text-anchor="middle" fill="white" font-family="Arial">T</text>
+    </svg>'''
+    return svg, 200, {'Content-Type': 'image/svg+xml'}
+
+
 # Vercel serverless handler - 这是关键！
 # Vercel 会查找名为 app 的 WSGI 应用
 # 不需要额外的 handler 函数

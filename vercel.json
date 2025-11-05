@@ -9,15 +9,15 @@
   "routes": [
     {
       "src": "/api/fetch-comments-batch",
-      "dest": "api/fetch-comments-batch.py"
+      "dest": "/api/fetch-comments-batch.py"
     },
     {
       "src": "/api/export/excel",
-      "dest": "api/export/excel.py"
+      "dest": "/api/export/excel.py"
     },
     {
       "src": "/(.*)",
-      "dest": "api/index.py"
+      "dest": "/api/index.py"
     }
   ],
   "functions": {

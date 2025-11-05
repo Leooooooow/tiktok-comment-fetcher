@@ -215,13 +215,15 @@ function createCommentsCell(comments) {
             <div class="comment-header">
                 <img src="${avatar}" alt="${comment.author?.nickname || 'Unknown'}" class="comment-avatar"
                      onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%236366f1%22%3E%3Cpath d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22/%3E%3C/svg%3E'">
-                <div class="comment-author">${comment.author?.nickname || '未知用户'}</div>
+                <div class="comment-author-info">
+                    <div class="comment-author">${comment.author?.nickname || '未知用户'}</div>
+                    <div class="comment-stats">
+                        <span class="comment-likes">👍 ${formatNumber(comment.likes || 0)}</span>
+                        ${comment.reply_count > 0 ? `<span class="comment-replies">💬 ${formatNumber(comment.reply_count)}</span>` : ''}
+                    </div>
+                </div>
             </div>
             <div class="comment-content">${comment.text || '(无文字内容)'}</div>
-            <div class="comment-footer">
-                <span class="comment-likes">👍 ${formatNumber(comment.likes || 0)}</span>
-                ${comment.reply_count > 0 ? `<span class="comment-replies">💬 ${formatNumber(comment.reply_count)}</span>` : ''}
-            </div>
         `;
 
         container.appendChild(commentEl);
@@ -294,7 +296,6 @@ function renderTable(videos) {
 
     // 创建表格行
     const rows = [
-        { class: 'video-title-row', label: '标题' },
         { class: 'url-row', label: 'URL' },
         { class: 'video-id-row', label: '视频ID' },
         { class: 'comment-count-row', label: '评论总数' },
@@ -315,9 +316,6 @@ function renderTable(videos) {
             const td = document.createElement('td');
 
             switch (rowConfig.class) {
-                case 'video-title-row':
-                    td.innerHTML = `<div class="video-number">视频 ${videoIndex + 1}</div>`;
-                    break;
                 case 'url-row':
                     td.innerHTML = `<div class="url-text" title="${video.url}">${video.url}</div>`;
                     break;

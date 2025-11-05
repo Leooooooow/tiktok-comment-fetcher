@@ -2,30 +2,33 @@
 // 全局变量
 // ========================================
 
-let currentComments = [];
-let filteredComments = [];
+let currentVideos = [];
+let processedVideos = [];
 
 // ========================================
 // DOM 元素
 // ========================================
 
 const elements = {
-    videoUrl: document.getElementById('videoUrl'),
+    videoUrls: document.getElementById('videoUrls'),
+    urlCount: document.getElementById('urlCount'),
     fetchBtn: document.getElementById('fetchBtn'),
     clearBtn: document.getElementById('clearBtn'),
     loading: document.getElementById('loading'),
+    progressFill: document.getElementById('progressFill'),
+    progressText: document.getElementById('progressText'),
     error: document.getElementById('error'),
     errorMessage: document.getElementById('errorMessage'),
     retryBtn: document.getElementById('retryBtn'),
     results: document.getElementById('results'),
+    totalVideos: document.getElementById('totalVideos'),
     totalComments: document.getElementById('totalComments'),
-    videoId: document.getElementById('videoId'),
-    commentsList: document.getElementById('commentsList'),
-    exportJsonBtn: document.getElementById('exportJsonBtn'),
-    exportCsvBtn: document.getElementById('exportCsvBtn'),
-    copyJsonBtn: document.getElementById('copyJsonBtn'),
-    searchInput: document.getElementById('searchInput'),
-    sortSelect: document.getElementById('sortSelect'),
+    successRate: document.getElementById('successRate'),
+    tableContainer: document.getElementById('tableContainer'),
+    videosTable: document.getElementById('videosTable'),
+    exportExcelBtn: document.getElementById('exportExcelBtn'),
+    clearResultsBtn: document.getElementById('clearResultsBtn'),
+    toggleScrollBtn: document.getElementById('toggleScrollBtn'),
     toast: document.getElementById('toast'),
     toastMessage: document.getElementById('toastMessage')
 };
@@ -54,21 +57,6 @@ function formatNumber(num) {
 }
 
 /**
- * 格式化时间（相对时间）
- */
-function formatRelativeTime(timestamp) {
-    const now = Math.floor(Date.now() / 1000);
-    const diff = now - timestamp;
-
-    if (diff < 60) return '刚刚';
-    if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
-    if (diff < 2592000) return `${Math.floor(diff / 86400)} 天前`;
-    if (diff < 31536000) return `${Math.floor(diff / 2592000)} 个月前`;
-    return `${Math.floor(diff / 31536000)} 年前`;
-}
-
-/**
  * 切换视图状态
  */
 function showView(viewName) {
@@ -93,27 +81,71 @@ function showError(message) {
     showView('error');
 }
 
+/**
+ * 验证 TikTok URL
+ */
+function isValidTikTokUrl(url) {
+    const patterns = [
+        /tiktok\.com\/.*\/video\/\d+/,
+        /vm\.tiktok\.com\/\w+/,
+        /vt\.tiktok\.com\/\w+/
+    ];
+
+    return patterns.some(pattern => pattern.test(url));
+}
+
+/**
+ * 解析和清理输入的URL
+ */
+function parseUrls(text) {
+    const lines = text.split('\n');
+    const urls = [];
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed && isValidTikTokUrl(trimmed)) {
+            urls.push(trimmed);
+        }
+    }
+
+    // 去重
+    return [...new Set(urls)];
+}
+
+/**
+ * 更新URL计数
+ */
+function updateUrlCount() {
+    const urls = parseUrls(elements.videoUrls.value);
+    const count = urls.length;
+    elements.urlCount.textContent = `已输入 ${count}/10 个视频链接`;
+    elements.urlCount.className = count > 10 ? 'url-count error' : 'url-count';
+
+    // 更新按钮状态
+    elements.fetchBtn.disabled = count === 0 || count > 10;
+}
+
 // ========================================
 // API 调用
 // ========================================
 
 /**
- * 获取评论数据
+ * 批量获取评论数据
  */
-async function fetchComments(url) {
+async function fetchBatchComments(urls) {
     try {
-        const response = await fetch('/api/fetch-comments', {
+        const response = await fetch('/api/fetch-comments-batch', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ url })
+            body: JSON.stringify({ urls })
         });
 
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error || '获取评论失败');
+            throw new Error(data.error || '批量获取评论失败');
         }
 
         return data;
@@ -123,38 +155,37 @@ async function fetchComments(url) {
 }
 
 /**
- * 导出数据
+ * 导出Excel文件
  */
-async function exportData(format) {
+async function exportExcel() {
     try {
-        const response = await fetch(`/api/export/${format}`, {
+        const response = await fetch('/api/export/excel', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                comments: currentComments,
-                video_id: elements.videoId.textContent
+                videos: processedVideos
             })
         });
 
         if (!response.ok) {
-            throw new Error('导出失败');
+            throw new Error('导出Excel失败');
         }
 
         const blob = await response.blob();
         const downloadUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = downloadUrl;
-        a.download = `tiktok_comments_${elements.videoId.textContent}.${format}`;
+        a.download = `tiktok_comments_batch_${new Date().toISOString().slice(0, 19).replace(/[:\s]/g, '_')}.xlsx`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(downloadUrl);
 
-        showToast(`已导出 ${format.toUpperCase()} 文件`);
+        showToast('Excel文件已导出');
     } catch (error) {
-        showToast('导出失败: ' + error.message);
+        showToast('导出Excel失败: ' + error.message);
     }
 }
 
@@ -163,72 +194,148 @@ async function exportData(format) {
 // ========================================
 
 /**
- * 渲染单个评论卡片
+ * 创建评论单元格
  */
-function createCommentCard(comment) {
-    const card = document.createElement('div');
-    card.className = 'comment-card';
+function createCommentsCell(comments) {
+    const container = document.createElement('div');
+    container.className = 'comments-list';
 
-    const avatar = comment.author.avatar || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"%3E%3Cpath d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/%3E%3C/svg%3E';
+    if (!comments || comments.length === 0) {
+        container.innerHTML = '<div class="no-comments">暂无评论</div>';
+        return container;
+    }
 
-    card.innerHTML = `
-        <div class="comment-header">
-            <img src="${avatar}" alt="${comment.author.nickname}" class="comment-avatar" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%236366f1%22%3E%3Cpath d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22/%3E%3C/svg%3E'">
-            <div class="comment-author-info">
-                <div class="comment-author">${comment.author.nickname}</div>
-                ${comment.author.username ? `<div class="comment-username">@${comment.author.username}</div>` : ''}
-            </div>
-        </div>
-        <p class="comment-text">${comment.text || '(无文字内容)'}</p>
-        <div class="comment-footer">
-            <div class="comment-stat likes">
-                <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                </svg>
-                <span>${formatNumber(comment.likes)}</span>
-            </div>
-            ${comment.reply_count > 0 ? `
-            <div class="comment-stat replies">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M7 8H17M7 12H11M21 12C21 16.9706 16.9706 21 12 21C10.4633 21 9.01778 20.6146 7.75001 19.9356L3 21L4.06442 16.25C3.38544 14.9822 3 13.5367 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span>${formatNumber(comment.reply_count)} 回复</span>
-            </div>
-            ` : ''}
-            <div class="comment-stat">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 8V12L15 15M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span>${formatRelativeTime(comment.create_time)}</span>
-            </div>
-        </div>
-    `;
+    comments.forEach(comment => {
+        const commentEl = document.createElement('div');
+        commentEl.className = 'comment-item';
 
-    return card;
+        const avatar = comment.author?.avatar || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"%3E%3Cpath d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/%3E%3C/svg%3E';
+
+        commentEl.innerHTML = `
+            <div class="comment-header">
+                <img src="${avatar}" alt="${comment.author?.nickname || 'Unknown'}" class="comment-avatar"
+                     onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%236366f1%22%3E%3Cpath d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22/%3E%3C/svg%3E'">
+                <div class="comment-author">${comment.author?.nickname || '未知用户'}</div>
+            </div>
+            <div class="comment-content">${comment.text || '(无文字内容)'}</div>
+            <div class="comment-footer">
+                <span class="comment-likes">👍 ${formatNumber(comment.likes || 0)}</span>
+                ${comment.reply_count > 0 ? `<span class="comment-replies">💬 ${formatNumber(comment.reply_count)}</span>` : ''}
+            </div>
+        `;
+
+        container.appendChild(commentEl);
+    });
+
+    return container;
 }
 
 /**
- * 渲染评论列表
+ * 创建操作按钮单元格
  */
-function renderComments(comments) {
-    elements.commentsList.innerHTML = '';
+function createActionsCell(videoIndex, video) {
+    const container = document.createElement('div');
+    container.className = 'actions-cell';
 
-    if (comments.length === 0) {
-        elements.commentsList.innerHTML = `
-            <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                <svg style="width: 64px; height: 64px; margin: 0 auto 1rem;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 10H8.01M12 10H12.01M16 10H16.01M9 16H5C3.89543 16 3 15.1046 3 14V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V14C21 15.1046 20.1046 16 19 16H14L9 21V16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <p>没有找到匹配的评论</p>
-            </div>
-        `;
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'btn-excel';
+    exportBtn.innerHTML = `
+        <span class="btn-icon">📊</span>
+        <span class="btn-text">Excel</span>
+    `;
+    exportBtn.title = '导出此视频Excel';
+    exportBtn.onclick = () => exportSingleVideo(video);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn-copy';
+    copyBtn.innerHTML = `
+        <span class="btn-icon">📋</span>
+        <span class="btn-text">复制</span>
+    `;
+    copyBtn.title = '复制评论';
+    copyBtn.onclick = () => copyVideoComments(video);
+
+    container.appendChild(exportBtn);
+    container.appendChild(copyBtn);
+
+    return container;
+}
+
+/**
+ * 渲染表格
+ */
+function renderTable(videos) {
+    const thead = elements.videosTable.querySelector('thead tr');
+    const tbody = elements.videosTable.querySelector('tbody');
+
+    // 清空现有内容
+    thead.innerHTML = '<th>视频信息</th>';
+    tbody.innerHTML = '';
+
+    // 成功的视频
+    const successfulVideos = videos.filter(v => v.success);
+
+    if (successfulVideos.length === 0) {
+        elements.tableContainer.innerHTML = '<div class="no-data">没有成功获取的视频数据</div>';
         return;
     }
 
-    comments.forEach((comment, index) => {
-        const card = createCommentCard(comment);
-        card.style.animationDelay = `${index * 0.05}s`;
-        elements.commentsList.appendChild(card);
+    // 创建表头
+    successfulVideos.forEach((video, index) => {
+        const th = document.createElement('th');
+        th.innerHTML = `
+            <div class="video-header">
+                <span class="video-icon">📹</span>
+                <span class="video-title">视频 ${index + 1}</span>
+            </div>
+        `;
+        thead.appendChild(th);
+    });
+
+    // 创建表格行
+    const rows = [
+        { class: 'video-title-row', label: '标题' },
+        { class: 'url-row', label: 'URL' },
+        { class: 'video-id-row', label: '视频ID' },
+        { class: 'comment-count-row', label: '评论总数' },
+        { class: 'comments-row', label: '评论列表' }
+    ];
+
+    rows.forEach((rowConfig, rowIndex) => {
+        const tr = document.createElement('tr');
+        tr.className = rowConfig.class;
+
+        // 标签列
+        const labelTd = document.createElement('td');
+        labelTd.textContent = rowConfig.label;
+        tr.appendChild(labelTd);
+
+        // 数据列
+        successfulVideos.forEach((video, videoIndex) => {
+            const td = document.createElement('td');
+
+            switch (rowConfig.class) {
+                case 'video-title-row':
+                    td.innerHTML = `<div class="video-number">视频 ${videoIndex + 1}</div>`;
+                    break;
+                case 'url-row':
+                    td.innerHTML = `<div class="url-text" title="${video.url}">${video.url}</div>`;
+                    break;
+                case 'video-id-row':
+                    td.innerHTML = `<div class="video-id">${video.video_id || 'N/A'}</div>`;
+                    break;
+                case 'comment-count-row':
+                    td.innerHTML = `<div class="comment-count"><span class="count-number">${formatNumber(video.total_comments)}</span><span class="count-unit">条</span></div>`;
+                    break;
+                case 'comments-row':
+                    td.appendChild(createCommentsCell(video.comments));
+                    break;
+            }
+
+            tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
     });
 }
 
@@ -236,13 +343,18 @@ function renderComments(comments) {
  * 显示结果
  */
 function displayResults(data) {
-    currentComments = data.comments;
-    filteredComments = [...currentComments];
+    currentVideos = data.videos || [];
+    processedVideos = currentVideos.filter(v => v.success);
 
-    elements.totalComments.textContent = formatNumber(data.total);
-    elements.videoId.textContent = data.video_id;
+    // 更新统计信息
+    elements.totalVideos.textContent = data.total_videos || 0;
+    elements.totalComments.textContent = formatNumber(data.total_comments || 0);
+    const successRate = data.total_videos > 0 ? Math.round((data.successful_videos / data.total_videos) * 100) : 0;
+    elements.successRate.textContent = `${successRate}%`;
 
-    renderComments(filteredComments);
+    // 渲染表格
+    renderTable(currentVideos);
+
     showView('results');
 
     // 滚动到结果区域
@@ -252,37 +364,39 @@ function displayResults(data) {
 }
 
 // ========================================
-// 过滤和排序
+// 导出和复制功能
 // ========================================
 
 /**
- * 过滤评论
+ * 导出单个视频的Excel
  */
-function filterComments() {
-    const searchTerm = elements.searchInput.value.toLowerCase().trim();
-
-    filteredComments = currentComments.filter(comment => {
-        const text = comment.text.toLowerCase();
-        const author = comment.author.nickname.toLowerCase();
-        return text.includes(searchTerm) || author.includes(searchTerm);
-    });
-
-    sortComments();
+async function exportSingleVideo(video) {
+    // 这里可以实现单个视频的Excel导出
+    showToast('单个视频导出功能开发中...');
 }
 
 /**
- * 排序评论
+ * 复制视频评论
  */
-function sortComments() {
-    const sortBy = elements.sortSelect.value;
-
-    if (sortBy === 'likes') {
-        filteredComments.sort((a, b) => b.likes - a.likes);
-    } else if (sortBy === 'time') {
-        filteredComments.sort((a, b) => b.create_time - a.create_time);
+async function copyVideoComments(video) {
+    if (!video.comments || video.comments.length === 0) {
+        showToast('没有可复制的评论');
+        return;
     }
 
-    renderComments(filteredComments);
+    const text = video.comments.map(comment => {
+        const author = comment.author?.nickname || '未知用户';
+        const content = comment.text || '';
+        const likes = comment.likes || 0;
+        return `${author}: ${content} 👍 ${likes}`;
+    }).join('\n\n');
+
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast('评论已复制到剪贴板');
+    } catch (error) {
+        showToast('复制失败: ' + error.message);
+    }
 }
 
 // ========================================
@@ -290,13 +404,18 @@ function sortComments() {
 // ========================================
 
 /**
- * 获取评论按钮点击事件
+ * 批量获取评论按钮点击事件
  */
-async function handleFetchComments() {
-    const url = elements.videoUrl.value.trim();
+async function handleFetchBatchComments() {
+    const urls = parseUrls(elements.videoUrls.value);
 
-    if (!url) {
-        showError('请输入 TikTok 视频链接');
+    if (urls.length === 0) {
+        showError('请输入至少一个有效的 TikTok 视频链接');
+        return;
+    }
+
+    if (urls.length > 10) {
+        showError('最多支持同时处理 10 个视频链接');
         return;
     }
 
@@ -304,12 +423,30 @@ async function handleFetchComments() {
     showView('loading');
 
     try {
-        const data = await fetchComments(url);
-        displayResults(data);
+        // 模拟进度更新
+        let progress = 0;
+        elements.progressText.textContent = '正在处理请求...';
+        elements.progressFill.style.width = '10%';
+
+        const data = await fetchBatchComments(urls);
+
+        // 完成进度
+        elements.progressFill.style.width = '100%';
+        elements.progressText.textContent = '处理完成！';
+
+        setTimeout(() => {
+            displayResults(data);
+        }, 1000);
+
     } catch (error) {
-        showError(error.message || '获取评论失败，请稍后重试');
+        showError(error.message || '批量获取评论失败，请稍后重试');
     } finally {
         elements.fetchBtn.disabled = false;
+        // 重置进度条
+        setTimeout(() => {
+            elements.progressFill.style.width = '0%';
+            elements.progressText.textContent = '准备中...';
+        }, 2000);
     }
 }
 
@@ -317,8 +454,9 @@ async function handleFetchComments() {
  * 清除输入
  */
 function handleClearInput() {
-    elements.videoUrl.value = '';
-    elements.videoUrl.focus();
+    elements.videoUrls.value = '';
+    updateUrlCount();
+    elements.videoUrls.focus();
 }
 
 /**
@@ -326,19 +464,40 @@ function handleClearInput() {
  */
 function handleRetry() {
     showView(null);
-    elements.videoUrl.focus();
+    elements.videoUrls.focus();
 }
 
 /**
- * 复制 JSON 到剪贴板
+ * 清空结果
  */
-async function handleCopyJson() {
-    try {
-        const json = JSON.stringify(currentComments, null, 2);
-        await navigator.clipboard.writeText(json);
-        showToast('已复制到剪贴板');
-    } catch (error) {
-        showToast('复制失败: ' + error.message);
+function handleClearResults() {
+    currentVideos = [];
+    processedVideos = [];
+    elements.videosTable.innerHTML = `
+        <thead>
+            <tr>
+                <th>视频信息</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+    showView(null);
+    elements.videoUrls.focus();
+}
+
+/**
+ * 切换滚动方向
+ */
+function handleToggleScroll() {
+    const container = elements.tableContainer;
+    if (container.style.overflowX === 'hidden') {
+        container.style.overflowX = 'auto';
+        container.style.overflowY = 'hidden';
+        showToast('已切换为横向滚动');
+    } else {
+        container.style.overflowX = 'hidden';
+        container.style.overflowY = 'auto';
+        showToast('已切换为纵向滚动');
     }
 }
 
@@ -348,8 +507,11 @@ async function handleCopyJson() {
 function handleExampleClick(e) {
     if (e.target.classList.contains('example-link')) {
         const url = e.target.dataset.url;
-        elements.videoUrl.value = url;
-        elements.videoUrl.focus();
+        const currentText = elements.videoUrls.value;
+        const newText = currentText ? `${currentText}\n${url}` : url;
+        elements.videoUrls.value = newText;
+        updateUrlCount();
+        elements.videoUrls.focus();
     }
 }
 
@@ -357,15 +519,11 @@ function handleExampleClick(e) {
 // 事件监听器
 // ========================================
 
-// 获取评论
-elements.fetchBtn.addEventListener('click', handleFetchComments);
+// 输入变化监听
+elements.videoUrls.addEventListener('input', updateUrlCount);
 
-// 回车键提交
-elements.videoUrl.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        handleFetchComments();
-    }
-});
+// 批量获取评论
+elements.fetchBtn.addEventListener('click', handleFetchBatchComments);
 
 // 清除按钮
 elements.clearBtn.addEventListener('click', handleClearInput);
@@ -373,14 +531,14 @@ elements.clearBtn.addEventListener('click', handleClearInput);
 // 重试按钮
 elements.retryBtn.addEventListener('click', handleRetry);
 
-// 导出按钮
-elements.exportJsonBtn.addEventListener('click', () => exportData('json'));
-elements.exportCsvBtn.addEventListener('click', () => exportData('csv'));
-elements.copyJsonBtn.addEventListener('click', handleCopyJson);
+// 导出Excel
+elements.exportExcelBtn.addEventListener('click', exportExcel);
 
-// 搜索和排序
-elements.searchInput.addEventListener('input', filterComments);
-elements.sortSelect.addEventListener('change', sortComments);
+// 清空结果
+elements.clearResultsBtn.addEventListener('click', handleClearResults);
+
+// 切换滚动方向
+elements.toggleScrollBtn.addEventListener('click', handleToggleScroll);
 
 // 示例链接
 document.addEventListener('click', handleExampleClick);
@@ -390,6 +548,7 @@ document.addEventListener('click', handleExampleClick);
 // ========================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('TikTok 评论获取器已加载');
-    elements.videoUrl.focus();
+    console.log('TikTok 批量评论获取器已加载');
+    elements.videoUrls.focus();
+    updateUrlCount();
 });

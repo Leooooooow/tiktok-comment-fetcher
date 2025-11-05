@@ -1,16 +1,16 @@
 """
 批量获取 TikTok 评论的 Vercel Serverless 函数
+使用标准 Python HTTP handler 格式
 """
 
-from flask import Flask, request, jsonify
+import json
 import requests
 import re
 import os
 from typing import Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-
-app = Flask(__name__)
+from http.server import BaseHTTPRequestHandler
 
 # API 配置
 API_KEY = os.environ.get('TIKHUB_API_KEY', "yY08aG9D6Gt45xNfyVW/s2oZ0kAkzYzcqMxwkGb27TJErnoTdfwowAWLEA==")
@@ -74,7 +74,6 @@ def fetch_all_comments(aweme_id: str) -> Dict[str, Any]:
     cursor = 0
     count = 30
     has_more = True
-    max_pages = 50
 
     while has_more and len(all_comments) < 1500:
         result = fetch_comments_app_v3(aweme_id, cursor=cursor, count=count)
@@ -136,108 +135,143 @@ def format_comment(comment: Dict) -> Dict:
     }
 
 
-@app.route('/', methods=['POST'])
-def handler():
-    """批量获取评论的 API 端点"""
+def process_single_video(url):
+    """处理单个视频"""
     try:
-        data = request.get_json()
-        urls = data.get('urls', [])
-
-        if not urls:
-            return jsonify({
+        video_id = extract_video_id(url)
+        if not video_id:
+            return {
+                "url": url,
                 "success": False,
-                "error": "请输入至少一个 TikTok 视频 URL"
-            }), 400
+                "error": "无法从 URL 中提取视频 ID",
+                "video_id": None,
+                "total_comments": 0,
+                "comments": []
+            }
 
-        # 去重和清理
-        clean_urls = list(set(url.strip() for url in urls if url.strip()))
-
-        if len(clean_urls) == 0:
-            return jsonify({
+        result = fetch_all_comments(video_id)
+        if not result["success"]:
+            return {
+                "url": url,
                 "success": False,
-                "error": "没有有效的 TikTok 视频 URL"
-            }), 400
+                "error": result.get("error", "获取评论失败"),
+                "video_id": video_id,
+                "total_comments": 0,
+                "comments": []
+            }
 
-        if len(clean_urls) > 10:
-            return jsonify({
-                "success": False,
-                "error": "最多支持同时处理 10 个视频链接"
-            }), 400
-
-        # 处理每个视频
-        results = []
-        total_comments = 0
-        successful_videos = 0
-
-        def process_single_video(url):
-            try:
-                video_id = extract_video_id(url)
-                if not video_id:
-                    return {
-                        "url": url,
-                        "success": False,
-                        "error": "无法从 URL 中提取视频 ID",
-                        "video_id": None,
-                        "total_comments": 0,
-                        "comments": []
-                    }
-
-                result = fetch_all_comments(video_id)
-                if not result["success"]:
-                    return {
-                        "url": url,
-                        "success": False,
-                        "error": result.get("error", "获取评论失败"),
-                        "video_id": video_id,
-                        "total_comments": 0,
-                        "comments": []
-                    }
-
-                formatted_comments = [format_comment(c) for c in result["comments"]]
-                return {
-                    "url": url,
-                    "success": True,
-                    "error": None,
-                    "video_id": video_id,
-                    "total_comments": len(formatted_comments),
-                    "comments": formatted_comments
-                }
-            except Exception as e:
-                return {
-                    "url": url,
-                    "success": False,
-                    "error": f"处理失败: {str(e)}",
-                    "video_id": None,
-                    "total_comments": 0,
-                    "comments": []
-                }
-
-        # 使用线程池并发处理（最多5个线程）
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_url = {executor.submit(process_single_video, url): url for url in clean_urls}
-
-            for future in as_completed(future_to_url):
-                result = future.result()
-                results.append(result)
-
-                if result["success"]:
-                    successful_videos += 1
-                    total_comments += result["total_comments"]
-
-        # 保持原始URL顺序
-        url_to_result = {r["url"]: r for r in results}
-        ordered_results = [url_to_result[url] for url in clean_urls if url in url_to_result]
-
-        return jsonify({
+        formatted_comments = [format_comment(c) for c in result["comments"]]
+        return {
+            "url": url,
             "success": True,
-            "total_videos": len(clean_urls),
-            "successful_videos": successful_videos,
-            "total_comments": total_comments,
-            "videos": ordered_results
-        })
-
+            "error": None,
+            "video_id": video_id,
+            "total_comments": len(formatted_comments),
+            "comments": formatted_comments
+        }
     except Exception as e:
-        return jsonify({
+        return {
+            "url": url,
             "success": False,
-            "error": f"批量处理失败: {str(e)}"
-        }), 500
+            "error": f"处理失败: {str(e)}",
+            "video_id": None,
+            "total_comments": 0,
+            "comments": []
+        }
+
+
+def process_request(data):
+    """处理批量评论请求"""
+    urls = data.get('urls', [])
+
+    if not urls:
+        return {
+            "success": False,
+            "error": "请输入至少一个 TikTok 视频 URL"
+        }, 400
+
+    # 去重和清理
+    clean_urls = list(set(url.strip() for url in urls if url.strip()))
+
+    if len(clean_urls) == 0:
+        return {
+            "success": False,
+            "error": "没有有效的 TikTok 视频 URL"
+        }, 400
+
+    if len(clean_urls) > 10:
+        return {
+            "success": False,
+            "error": "最多支持同时处理 10 个视频链接"
+        }, 400
+
+    # 处理每个视频
+    results = []
+    total_comments = 0
+    successful_videos = 0
+
+    # 使用线程池并发处理（最多5个线程）
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_url = {executor.submit(process_single_video, url): url for url in clean_urls}
+
+        for future in as_completed(future_to_url):
+            result = future.result()
+            results.append(result)
+
+            if result["success"]:
+                successful_videos += 1
+                total_comments += result["total_comments"]
+
+    # 保持原始URL顺序
+    url_to_result = {r["url"]: r for r in results}
+    ordered_results = [url_to_result[url] for url in clean_urls if url in url_to_result]
+
+    return {
+        "success": True,
+        "total_videos": len(clean_urls),
+        "successful_videos": successful_videos,
+        "total_comments": total_comments,
+        "videos": ordered_results
+    }, 200
+
+
+# Vercel Serverless Handler
+class handler(BaseHTTPRequestHandler):
+    """
+    Vercel serverless function handler (BaseHTTPRequestHandler format)
+    """
+    def do_POST(self):
+        try:
+            # 读取请求体
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+
+            # 处理请求
+            result, status_code = process_request(data)
+
+            # 发送响应
+            self.send_response(status_code)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode('utf-8'))
+
+        except json.JSONDecodeError:
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            error_response = json.dumps({
+                "success": False,
+                "error": "Invalid JSON format"
+            })
+            self.wfile.write(error_response.encode('utf-8'))
+
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            error_response = json.dumps({
+                "success": False,
+                "error": f"Server error: {str(e)}"
+            })
+            self.wfile.write(error_response.encode('utf-8'))

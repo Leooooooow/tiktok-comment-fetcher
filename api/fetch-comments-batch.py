@@ -142,7 +142,6 @@ def format_comment(comment: Dict) -> Dict:
 
 
 @app.route('/', methods=['POST'])
-@app.route('/api/fetch-comments-batch', methods=['POST'])
 def handler():
     """批量获取评论的 API 端点"""
     try:

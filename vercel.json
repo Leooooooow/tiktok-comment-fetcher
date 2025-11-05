@@ -6,6 +6,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/fetch-comments-batch",
+      "destination": "/api/fetch_comments_batch"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/api/index"
     }

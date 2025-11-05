@@ -1,29 +1,15 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/**/*.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/fetch-comments-batch",
-      "dest": "api/fetch-comments-batch.py"
-    },
-    {
-      "src": "/api/export/excel",
-      "dest": "api/export/excel.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "api/index.py"
-    }
-  ],
   "functions": {
     "api/**/*.py": {
       "runtime": "python3.9",
       "maxDuration": 60
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/api/index"
+    }
+  ]
 }

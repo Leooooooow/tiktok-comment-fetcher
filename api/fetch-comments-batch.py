@@ -6,14 +6,9 @@ from flask import Flask, request, jsonify
 import requests
 import re
 import os
-import sys
 from typing import Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-
-# 获取项目根目录
-base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, base_dir)
 
 app = Flask(__name__)
 
